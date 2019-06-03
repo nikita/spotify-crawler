@@ -1,61 +1,58 @@
-var request = require('promise-request');
-var cheerio = require('cheerio');
-var money = require('money');
-var _ = require('lodash');
-var when = require('when');
-var async = require('async');
-var format = require('string-format');
+var request = require("request-promise");
+var cheerio = require("cheerio");
+var money = require("money");
+var _ = require("lodash");
+var when = require("when");
+var async = require("async");
+var format = require("string-format");
 
-function fetchEverything(){
+function fetchEverything() {
   getLatestCurrencyRates();
 
-  return getCountries()
-    .then(handleCountries);
+  return getCountries().then(handleCountries);
 }
 
-function getCountries(){
+function getCountries() {
   var countryList = "https://www.spotify.com/select-your-country/";
-  return request(countryList)
-    .then(function(body){
-      $ = cheerio.load(body);
+  return request(countryList).then(function(body) {
+    $ = cheerio.load(body);
 
-      var items = $('li.country-item a').toArray();
-      console.log('{0} country-items'.format(items.length));
+    var items = $("li.country-item a").toArray();
+    console.log("{0} country-items".format(items.length));
 
-      return items;
-    });
+    return items;
+  });
 }
 
-function handleCountries(items){
-  return when.promise(function(resolve, reject){
-    async.map(items, handleSingleCountry, function(err, results){
-      if(err)
-        reject(err);
+function handleCountries(items) {
+  return when.promise(function(resolve, reject) {
+    async.map(items, handleSingleCountry, function(err, results) {
+      if (err) reject(err);
 
       resolve(results);
     });
   });
 }
 
-function handleSingleCountry(elem, callback){
+function handleSingleCountry(elem, callback) {
   var country = {
-    link: $(elem).attr('href'),
-    title: $(elem).attr('title'),
-    originalRel: $(elem).attr('rel')
+    link: $(elem).attr("href"),
+    title: $(elem).attr("title"),
+    originalRel: $(elem).attr("rel")
   };
 
-  country.rel = country.originalRel.split('-')[0];
+  country.rel = country.originalRel.split("-")[0];
 
   // Handle UK edge-case for http://restcountries.eu
-  if(country.rel === 'uk')
-    country.rel = 'gb';
+  if (country.rel === "uk") country.rel = "gb";
 
   var catalogSize = getCatalogSize(country.rel);
   var extraCountryData = getCountryData(country.rel);
   var spotifyPrice = getSpotifyPrice(country.link).then(formatSpotifyPrice);
 
-  when.all([extraCountryData, spotifyPrice, catalogSize])
-    .then(function(data){
+  when
+    .all([extraCountryData, spotifyPrice, catalogSize])
+    .then(function(data) {
       country = _.extend(country, data[0]);
 
       var spotify = data[1];
@@ -67,21 +64,20 @@ function handleSingleCountry(elem, callback){
       return when.resolve(country);
     })
     .then(convertPriceToUSD)
-    .then(function(data){
+    .then(function(data) {
       callback(null, data);
     })
-    .catch(function(error){
+    .catch(function(error) {
       callback(error);
     });
 }
 
-
-function getCountryData(code){
+function getCountryData(code) {
   var url = "http://restcountries.eu/rest/v1/alpha/" + code;
 
   return request(url, true)
     .then(getCountryCurrencyCode)
-    .then(function(data){
+    .then(function(data) {
       return {
         currency: data.currency,
         originalCurrency: data.originalCurrency,
@@ -94,9 +90,9 @@ function getCountryData(code){
     });
 }
 
-function getCountryCurrencyCode(data){
-  if(!data.currencies){
-    var error = new Error('{0} is missing currency data'.format(code));
+function getCountryCurrencyCode(data) {
+  if (!data.currencies) {
+    var error = new Error("{0} is missing currency data".format(code));
     error.res = data;
     throw error;
   }
@@ -104,23 +100,28 @@ function getCountryCurrencyCode(data){
   var code = data.alpha2Code.toLowerCase();
   var currency;
   // Handle Switzerland
-  if(code === "ch")
-    currency = "CHF";
+  if (code === "ch") currency = "CHF";
 
   // Handle Chile
-  if(code === "cl")
-    currency = "CLP";
+  if (code === "cl") currency = "CLP";
 
   // Handle all countries using EUR
   var countriesUsingEUR = ["hu", "is", "cz", "lt", "bg"];
-  if(_.contains(countriesUsingEUR, code))
-    currency = "EUR";
-
+  if (_.contains(countriesUsingEUR, code)) currency = "EUR";
 
   // Handle all countries displaying price in USD
-  var countriesUsingUSD = ["uy", "py", "cr", "do", "ni", "hn", "sv", "gt", "bo"];
-  if(_.contains(countriesUsingUSD, code))
-    currency = "USD";
+  var countriesUsingUSD = [
+    "uy",
+    "py",
+    "cr",
+    "do",
+    "ni",
+    "hn",
+    "sv",
+    "gt",
+    "bo"
+  ];
+  if (_.contains(countriesUsingUSD, code)) currency = "USD";
 
   data.currency = currency || data.currencies[0];
   data.originalCurrency = data.currencies[0];
@@ -128,21 +129,22 @@ function getCountryCurrencyCode(data){
   return data;
 }
 
-function getSpotifyPrice(link){
+function getSpotifyPrice(link) {
   var url = "https://www.spotify.com" + link;
 
-  return request(url)
-    .then(function(body){
-      $ = cheerio.load(body);
-      var price = $('#premium-tier .premium-price').text();
+  return request(url).then(function(body) {
+    $ = cheerio.load(body);
+    var price = $(".promotion-header .subheadline").text();
 
-      return price;
-    });
+    return price;
+  });
 }
 
-function formatSpotifyPrice(price){
-  var formattedPrice = price.match(/([1-9](?:\d*)(?:,\d{2})*(?:\.\d*[1-9])?)/g)[0];
-  formattedPrice = formattedPrice.replace(',', '.');
+function formatSpotifyPrice(price) {
+  var formattedPrice = price.match(
+    /([1-9](?:\d*)(?:,\d{2})*(?:\.\d*[1-9])?)/g
+  )[0];
+  formattedPrice = formattedPrice.replace(",", ".");
 
   return {
     original: price,
@@ -150,17 +152,25 @@ function formatSpotifyPrice(price){
   };
 }
 
-function convertPriceToUSD(country){
-  return when.promise(function(resolve, reject){
-    if(!country.currency){
+function convertPriceToUSD(country) {
+  return when.promise(function(resolve, reject) {
+    if (!country.currency) {
       console.log(country);
-      reject('Missing currency');
+      reject("Missing currency");
     }
-    var converted = money.convert(country.price, {from: country.currency, to: 'USD'});
+    var converted = money.convert(country.price, {
+      from: country.currency,
+      to: "USD"
+    });
 
-    if(converted === 'fx error'){
+    if (converted === "fx error") {
       console.log(country.currency);
-      reject('Couldn\'t convert the price for: {0}({1})'.format(country.title, country.currency));
+      reject(
+        "Couldn't convert the price for: {0}({1})".format(
+          country.title,
+          country.currency
+        )
+      );
     }
 
     country.convertedPrice = converted;
@@ -169,31 +179,35 @@ function convertPriceToUSD(country){
 }
 
 // Get latest currency rates from Open Exchange Rates
-function getLatestCurrencyRates(){
-  var currencyApi = "http://openexchangerates.org/api/latest.json?app_id=0239e164a3cb415f8fcf72d9a9cc2f2d";
+function getLatestCurrencyRates() {
+  var currencyApi =
+    "http://openexchangerates.org/api/latest.json?app_id=0239e164a3cb415f8fcf72d9a9cc2f2d";
   request(currencyApi, true)
-    .then(function(data){
-
+    .then(function(data) {
       money.base = data.rates;
       money.rates = data.rates;
     })
-    .catch(function(error){
+    .catch(function(error) {
       console.log(error);
     });
 }
 
-function getCatalogSize(countryCode){
-  if(countryCode.length !== 2)
-    throw new Error('countryCode has to be in the two-letter(ISO 3166-1 alpha-2) format');
+function getCatalogSize(countryCode) {
+  if (countryCode.length !== 2)
+    throw new Error(
+      "countryCode has to be in the two-letter(ISO 3166-1 alpha-2) format"
+    );
 
   countryCode = countryCode.toUpperCase();
-  var url = "http://ws.spotify.com/search/1/track.json?q=year:0-3000&country=" + countryCode;
+  var url =
+    "http://ws.spotify.com/search/1/track.json?q=year:0-3000&country=" +
+    countryCode;
 
   return request(url, true)
-    .then(function(data){
+    .then(function(data) {
       return data.info.num_results;
     })
-    .catch(function(error){
+    .catch(function(error) {
       console.log(error);
     });
 }
