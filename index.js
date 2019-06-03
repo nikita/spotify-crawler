@@ -17,7 +17,7 @@ function getCountries() {
   return request(countryList).then(function(body) {
     $ = cheerio.load(body);
 
-    var items = $("li.country-item a").toArray();
+    var items = $("li a.market").toArray();
     console.log("{0} country-items".format(items.length));
 
     return items;
